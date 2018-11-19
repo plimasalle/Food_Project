@@ -1,0 +1,179 @@
+---
+title: "Restaurant_Type"
+author: "ACP"
+date: "11/18/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Analyses for Boston restaurant violations final project exploring differences based on restaurant and restaurant type.
+
+```{r, message=FALSE}
+library(tidyverse)
+library(gridExtra)
+finalviol <- read.csv("finalviol.csv")
+```
+
+```{r}
+finalviol <- finalviol %>%
+  filter(year > 2006, LICSTATUS == "Active") %>%
+  mutate(violstatus_fail = ifelse(ViolStatus == "Fail", 1, 0))
+
+finalviol_anyfail <- finalviol %>%
+  group_by(DESCRIPT, name, ZIP, LICENSENO, year) %>%
+  summarize(fails = sum(violstatus_fail), num_cat = n()) %>%
+  mutate(anyfails = ifelse(fails > 0, 1, 0), fivefails = ifelse(fails > 4, 1, 0), pcnt_fails = fails/num_cat)
+
+finalviol_anyfail %>% group_by(DESCRIPT) %>%
+  summarize(mean(anyfails), n())
+```
+
+There are four main categories of restaurants in the dataset:
+  1. Eating & Drinking
+  2. Eating & Drinking w/ Take Out
+  3. Mobile Food Walk On
+  4. Retail Food
+  
+Across all years, the vast majority of restaurants had at least one failure across the violation categories inspected (ranging from 98.1% among Retail Food to 99.7% among Mobile Food Walk On restaurants).
+
+*Note: These analyses are limited to restaurants with active licenses only, but these numbers did not change substantially (fractions of percentage points) when restaurants with inactive licenses were also included.*
+
+```{r}
+finalviol_anyfail %>% group_by(DESCRIPT) %>%
+  summarize(mean(fivefails), n())
+```
+
+Across all years, there was more variation across restaurant categories in the percent of restaurants per category that had at least five failures across violation categories. About a third of Eating and Drinking and Eating & Drinking w/ Take Out restaurants, about a fifth of Retail Food restaurants, and about a sixth of Mobile Food Walk On restuarants had at least five failures.
+
+```{r}
+finalviol_anyfail %>% filter(anyfails > 0) %>%
+  group_by(DESCRIPT) %>%
+  summarize(mean(pcnt_fails), n())
+```
+
+Among restaurants that failed at least one inspection category, Retail Food restaurants overall failed the highest percent of violation categories inspected with the average Retail Food restaurant failing 67.9% of the violation categories inspected. Eating & Drinking restaurants failed the lowest percent of categories inspected with the average Eating & Drinking restaurant failing 58.9% of violation categories inspected.
+
+```{r}
+finalviol_typeyear <- finalviol_anyfail %>%
+  filter(anyfails > 0) %>%
+  group_by(DESCRIPT, year) %>%
+  summarize(avg_pcnt_fails = mean(pcnt_fails), count = n())
+
+ggplot(finalviol_typeyear, aes(year, avg_pcnt_fails, color = DESCRIPT)) +
+  geom_line() +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Violation Categories Failed", limits = c(0, 0.8))
+```
+
+With the exception of Mobile Food Walk On, all restuarants that failed at least one violation category inspected tended to fail a similar percent of violation categories inspected across years. This variation for Mobile Food Walk On may be driven by the low number of Mobile Food Walk On restaurants (ranging from 1 in 2009 to a peak of 102 in 2018).
+
+```{r}
+finalviol_cat <- finalviol %>%
+  group_by(DESCRIPT, year, violcats) %>%
+  summarize(avg_cat = mean(violstatus_fail), count = n())
+
+ggplot(filter(finalviol_cat, DESCRIPT == "Eating & Drinking"), aes(year, avg_cat, color = violcats)) +
+  geom_line() +
+  ggtitle("Frequency of Violation Categories for Eating & Drinking Restuarants") +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed by Violation Category", limits = c(0, 0.6))
+```
+
+```{r}
+ggplot(filter(finalviol_cat, DESCRIPT == "Eating & Drinking w/ Take Out"), aes(year, avg_cat, color = violcats)) +
+  geom_line() +
+  ggtitle("Frequency of Violation Categories for Eating & Drinking w/ Take Out Restuarants") +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed by Violation Category", limits = c(0, 0.6))
+```
+
+```{r}
+ggplot(filter(finalviol_cat, DESCRIPT == "Mobile Food Walk On"), aes(year, avg_cat, color = violcats)) +
+  geom_line() +
+  ggtitle("Frequency of Violation Categories for Mobile Food Walk On Restuarants") +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed by Violation Category", limits = c(0, 1.0))
+```
+
+```{r}
+ggplot(filter(finalviol_cat, DESCRIPT == "Retail Food"), aes(year, avg_cat, color = violcats)) +
+  geom_line() +
+  ggtitle("Frequency of Violation Categories for Retail Food Restuarants") +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed by Violation Category", limits = c(0, 0.7))
+```
+
+Across all restaurant types, the frequency of failing by violation category is approximately the same across violation categories across all years (generally within about a five percentage point band).
+
+```{r}
+finalviol_violcats <- finalviol %>%
+  group_by(violcats, name, ZIP, LICENSENO, year) %>%
+  summarize(fails = sum(violstatus_fail), num_cat = n()) %>%
+  mutate(anyfails = ifelse(fails > 0, 1, 0), pcnt_fails = fails/num_cat)
+
+finalviol_violcats %>% group_by(violcats) %>%
+  summarize(mean(anyfails), n())
+```
+
+Across all violation categories, there are high rates of reatuarants failing at least one inspection
+
+```{r}
+finalviol_catyear <- finalviol_violcats %>%
+  filter(anyfails > 0) %>%
+  group_by(violcats, year) %>%
+  summarize(avg_pcnt_fails = mean(pcnt_fails), count = n())
+
+ggplot(finalviol_catyear, aes(year, avg_pcnt_fails, color = violcats)) +
+  geom_line() +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed", limits = c(0, 0.7))
+```
+
+Among restaurants that failed in at least one category, there were approximately
+
+```{r}
+finalviol_repeat <- finalviol %>%
+  group_by(name, DESCRIPT, ZIP, violcats) %>%
+  summarize(mult_fails = sum(violstatus_fail)) %>%
+  mutate(violrepeat = ifelse(mult_fails > 1, 1, 0))
+```
+
+Based on the data, the ten most common repeat offenders within the same violation category are:
+  1. Subway (02115)
+  2. Cosi (02110)
+  3. Dunkin Donuts (02125)
+  4. Dunkin Donuts (02128)
+  5. Dunkin Donuts (02122)
+  6. McDonalds (02135)
+  7. U Food Grill (02128)
+  8. Burger King (02128)
+  9. Dunkin Donuts RMG (02128)
+  10. Currito Burrito (02128)
+  
+```{r}
+finalviol_DD <- finalviol %>%
+  filter(name == "Dunkin Donuts" | name == "Dunkin" | name == "DUNKIN (STATION DONUTS)" | name == "DUNKIN DONUT" | name == "Dunkin Donuts (1447 Tremont St.)" | name == "Dunkin Donuts (209 North Harvard St.)" | name == "Dunkin Donuts (219 Cambridge)" | name == "Dunkin Donuts (48 W Broadway)" | name == "Dunkin Donuts (895 Morton St.)" | name == "DUNKIN DONUTS (ALLSTON)" | name == "DUNKIN DONUTS (BAY ROAD)" | name == "Dunkin Donuts (Canal St.)" | name == "DUNKIN DONUTS (CARNEY)" | name == "Dunkin Donuts (Causeway St.)" | name == "DUNKIN DONUTS (CITY PLACE)" | name == "Dunkin Donuts (Front Foodcourt)" | name == "Dunkin Donuts (TRMNL-C Baggage Area)" | name == "Dunkin Donuts (V.F.W. Pkwy.)" | name == "DUNKIN DONUTS (WEST ROXBURY)" | name == "DUNKIN DONUTS (WTC)" | name == "DUNKIN DONUTS @ HAYDEN HALL" | name == "Dunkin Donuts @ MBTA Station" | name == "Dunkin Donuts @ Stop & Shop" | name == "Dunkin Donuts at Old Colony" | name == "DUNKIN DONUTS BLUE HILL AVE" | name == "Dunkin Donuts Kiosk" | name == "Dunkin Donuts North Station" | name == "Dunkin Donuts Space No. 86" | name == "Dunkin Donuts-Amer Airlines/Landside" | name == "DUNKIN DONUTS-U S AIR" | name == "DUNKIN DONUTS'" | name == "Dunkin Donuts(757 Centre St.)" | name == "DUNKIN DONUTS(ARRIVAL)" | name == "DUNKIN DONUTS(DEPARTURE)" | name == "DUNKIN DONUTS(FRANKLIN)" | name == "DUNKIN DONUTS(SATELLITE)" | name == "DUNKIN DONUTS(WOLCOTT SQ. LLC)" | name == "Dunkin Donuts/1138 Washington St." | name == "Dunkin Donuts/Airside" | name == "DUNKIN DONUTS/BASKIN ROBBINS" | name == "DUNKIN DONUTS/BEE FINE FOODS" | name == "DUNKIN DONUTS/FIRST DONUTS INC" | name == "DUNKIN DONUTS/GALLERIA" | name == "DUNKIN DONUTS/GALLIVAN" | name == "DUNKIN DONUTS/HYDE PK AVE" | name == "DUNKIN DONUTS/PLAZA ENT" | name == "DUNKIN DONUTS/SCNVANOS" | name == "DUNKIN DONUTS/WALDWIN GROUP" | name == "DUNKIN'" | name == "Dunkin' Donuts" | name == "DUNKIN' DONUTS" | name == "Dunkin' Donuts Express" | name == "DUNKIN' DONUTS No. 0311" | name == "DUNKIN' DONUTS-WATERMARK" | name == "Dunkin' Donuts(C.A. Donuts)" | name == "DUNKIN' DONUTS(RMG DONUTS LLC)" | name == "DUNKIN/DONUT/WATERMARK") %>%
+  group_by(LICENSENO, name, ZIP, year) %>%
+  summarize(fails = sum(violstatus_fail), count = n()) %>%
+  mutate(pcnt_fails = fails / count)
+
+ggplot(finalviol_DD, aes(year, pcnt_fails, color = as.factor(LICENSENO))) +
+  geom_line() +
+  ggtitle("Dunkin Donuts Violations by Franchise per Year") +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed") +
+  theme(legend.position = "none")
+```
+
+```{r}
+ggplot(finalviol_DD, aes(year, pcnt_fails, group = year)) +
+  geom_boxplot() +
+  ggtitle("Dunkin Donuts Violations by Franchise per Year") +
+  scale_x_continuous(name = "Year", limits = c(2006, 2019), breaks = c(2007:2018)) +
+  scale_y_continuous(name = "Percent of Inspections Failed") +
+  theme(legend.position = "none")
+```
+
