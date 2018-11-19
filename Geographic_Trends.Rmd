@@ -1,0 +1,68 @@
+---
+title: "Geographic Trends"
+author: "plimasalle"
+date: "11/19/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+_Upload data_
+
+```{r}
+library(readxl)
+geotrends <- read_excel("geotrends.xlsx")
+```
+
+_Clean data_
+
+```{r}
+library(tidyverse)
+SimpleGeo <- geotrends %>% 
+  group_by(ZIP) %>% 
+  summarize(number_inspection = n())
+```
+
+_Get complete list of zipcodes and coordinates for MA_
+
+```{r}
+library(zipcode)
+data(zipcode)
+zipcode <- zipcode %>% filter(state == "MA")
+```
+
+_Finalized data frame - Need to delete '2315' row bc it's not found in the zipcode database_
+
+```{r}
+SimpleGeo["Name"] <- NA
+SimpleGeo$Name <- c("Marshfield","Boston","Boston","Boston","Boston","Boston","Boston","Boston","Boston","Boston","Boston","Boston","Boston","Boston","Boston","Boston","Boston","Mattapan","Boston","Boston","Charlestown","Jamaica Plain","Roslindale","West Roxbury","Allston","Brighton","Hyde Park","Cambridge","Malden","Boston", "Weymouth","Boston","Boston","Boston","Boston","Boston","NA","Chestnut Hill") 
+
+SimpleGeo["Lat"] <- NA
+SimpleGeo$Lat <- c("42.10976","42.3579","42.36148","42.35653","42.34984","42.36503","42.36179","42.34308","42.34962","42.33895","42.33872","42.32451","42.33210","42.30745","42.29630","42.28713","42.31685","42.27210","42.33499","42.37830","42.37862","42.31000","42.28468","42.27943","42.35515","42.34842","42.25220","42.39333","42.42855","42.36795","42.21287","42.34713","42.33895","42.36149","42.34797","42.3470","NA","42.322") 
+  
+SimpleGeo["Long"] <- NA
+SimpleGeo$Long <- c("-70.69172","-71.06408","-71.05417","-71.05365","-71.06101","-71.05636","-71.06774","-71.09268","-71.07372","-70.91963","-71.07276","-71.08455","-71.09651","-71.08127","-71.05454","-71.07156","-71.05811","-71.09426","-71.04562","-71.02550","-71.06495","-71.11171","-71.13052","-71.15980","-71.13164","-71.15349","-71.12593","-71.12837","-71.06059","-71.12056","-70.95872","-71.08234","-70.91963","-71.06036","-71.04463","-71.10215","NA","-71.17314")   
+```
+
+_Map of MA divided into zipcodes_
+
+```{r}
+library(tidyverse)
+library(rgdal)
+towns <- readOGR(dsn = "MA", layer = "tl_2015_25_cousub")
+plot(towns)
+towns_fortify <- fortify(towns, region="NAME")
+gg <- ggplot()
+gg <- gg + geom_polygon(data=towns_fortify, aes(x=long, y=lat, group=group, fill=NA), color = "black", fill=NA, size=0.5)
+```
+
+_Summary Table - Need to specify neighborhoods in Boston - Can't get to just get frequencies _
+
+```{r}
+TwoWay <- table(SimpleGeo$Name, SimpleGeo$number_inspection)
+TwoWay
+```
+
+
