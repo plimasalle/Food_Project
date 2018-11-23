@@ -9,14 +9,26 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+<<<<<<< HEAD
+## Uploaded Data
+
+_I adjusted Cynthia's dataset by deleting the 'type' and 'time' trends._
+=======
 _Upload data_
+>>>>>>> 36e5899a7c0c454cbd15446a3c2003d1d11f835a
 
 ```{r}
 library(readxl)
 geotrends <- read_excel("geotrends.xlsx")
 ```
 
+<<<<<<< HEAD
+## Cleaned Data
+
+_I grouped the total number of inspections into zip code categories. Unfortunately, this means I am not taking into account the type of establishment, when the inspections occurred, or if they passed/failed._
+=======
 _Clean data_
+>>>>>>> 36e5899a7c0c454cbd15446a3c2003d1d11f835a
 
 ```{r}
 library(tidyverse)
@@ -25,7 +37,13 @@ SimpleGeo <- geotrends %>%
   summarize(number_inspection = n())
 ```
 
+<<<<<<< HEAD
+## Gathered Geocodes
+
+_I got a separate list of zip codes and coordinates for MA._
+=======
 _Get complete list of zipcodes and coordinates for MA_
+>>>>>>> 36e5899a7c0c454cbd15446a3c2003d1d11f835a
 
 ```{r}
 library(zipcode)
@@ -33,6 +51,46 @@ data(zipcode)
 zipcode <- zipcode %>% filter(state == "MA")
 ```
 
+<<<<<<< HEAD
+## Finalized Data Frame
+
+_I manually uploaded the information, because I wasn't sure how to cut and merge the two datasets. Also, for clarity, I replaced each 'Boston' zip code with the specific neighborhood, but these were based on my Google searches and not on official boundaries. (Note: I deleted zip code 02315 because it wasn't found in the zip code database)_
+
+```{r}
+SimpleGeo <- SimpleGeo[-c(37),]
+
+SimpleGeo["Name"] <- NA
+SimpleGeo$Name <- c("Marshfield","Beacon Hill","Faneuil Hall","Downtown Crossing","Leather District","North End","MGH/Science Park","Longwood/Northeastern","Back Bay","Copley","South End","Dudley Square","Mission Hill","Franklin Field North","Clam Point","Ashmont","South Bay","Mattapan","Telegraph Hill","Logan/East Boston","Charlestown","Jamaica Plain","Roslindale","West Roxbury","Allston","Brighton","Hyde Park","Cambridge","Malden","Lower Allston", "Weymouth","Prudential","Old State House","Government Center","Seaport","Fenway/Kenmore","Chestnut Hill") 
+
+SimpleGeo["Lat"] <- NA
+SimpleGeo$Lat <- c(42.10976,42.3579,42.36148,42.35653,42.34984,42.36503,42.36179,42.34308,42.34962,42.33895,42.33872,42.32451,42.33210,42.30745,42.29630,42.28713,42.31685,42.27210,42.33499,42.37830,42.37862,42.31000,42.28468,42.27943,42.35515,42.34842,42.25220,42.39333,42.42855,42.36795,42.21287,42.34713,42.33895,42.36149,42.34797,42.3470,42.322) 
+  
+SimpleGeo["Long"] <- NA
+SimpleGeo$Long <- c(-70.69172,-71.06408,-71.05417,-71.05365,-71.06101,-71.05636,-71.06774,-71.09268,-71.07372,-70.91963,-71.07276,-71.08455,-71.09651,-71.08127,-71.05454,-71.07156,-71.05811,-71.09426,-71.04562,-71.02550,-71.06495,-71.11171,-71.13052,-71.15980,-71.13164,-71.15349,-71.12593,-71.12837,-71.06059,-71.12056,-70.95872,-71.08234,-70.91963,-71.06036,-71.04463,-71.10215,-71.17314)   
+```
+
+## Generate MA Map
+
+_I was able to generate two maps, but both of them would not let me add a density/heat function for the total number of inspections per zip code._
+
+**Map 1: Google Map**
+
+```{r}
+if(!requireNamespace("devtools")) install.packages("devtools")
+devtools::install_github("dkahle/ggmap", ref = "tidyup")
+
+
+library(ggmap)
+register_google(key = "AIzaSyBJ7I6jURgmb0noA4zA4w6SZHsmjTneEoE", account_type = "premium", day_limit = 100000)
+
+require(ggmap)
+Bos_map <- qmap(c(lon = -71.0589, lat = 42.3601), zoom = 12)
+g <- Bos_map + geom_point(aes(x=Long, y=Lat), data = SimpleGeo, size=3, alpha=0.2, color="red") + ggtitle("Done")
+g
+```
+
+**Map 2: Original Work**
+=======
 _Finalized data frame - Need to delete '2315' row bc it's not found in the zipcode database_
 
 ```{r}
@@ -47,6 +105,7 @@ SimpleGeo$Long <- c("-70.69172","-71.06408","-71.05417","-71.05365","-71.06101",
 ```
 
 _Map of MA divided into zipcodes_
+>>>>>>> 36e5899a7c0c454cbd15446a3c2003d1d11f835a
 
 ```{r}
 library(tidyverse)
@@ -58,6 +117,38 @@ gg <- ggplot()
 gg <- gg + geom_polygon(data=towns_fortify, aes(x=long, y=lat, group=group, fill=NA), color = "black", fill=NA, size=0.5)
 ```
 
+<<<<<<< HEAD
+## Data Viz! 
+
+_I gave up on the maps and will go to office hours for help. For now, here is the distribution of inspections divided into neighborhood._
+
+```{r}
+library(ggplot2)
+ggplot(SimpleGeo) +
+  geom_point(aes(reorder(Name, number_inspection), y=number_inspection)) +
+  coord_flip()
+```
+
+## Preliminary Analysis 
+
+_At first glance, the businesses located in Boston (aka the ones that I had to manually enter the neighborhood for) had a higher prevlance of food inspections overall. A likely explanation is that these areas have high concentrations of tourists and students, which translates into having more establishments overall. Once the heat map for the neighborhoods with the highest number of total, all-time inspections has been generated, it would be interesting to see the changes in trends over time. Also, I would LOVE ideas on how to account for the volume bias. In other words, I am wondering if there is a relationship between type of neighborhood (i.e. high volume of customer traffic) and likelihood of having an eatery that gets inspected._
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+=======
 _Summary Table - Need to specify neighborhoods in Boston - Can't get to just get frequencies _
 
 ```{r}
@@ -65,4 +156,5 @@ TwoWay <- table(SimpleGeo$Name, SimpleGeo$number_inspection)
 TwoWay
 ```
 
+>>>>>>> 36e5899a7c0c454cbd15446a3c2003d1d11f835a
 
