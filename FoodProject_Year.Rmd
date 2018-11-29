@@ -1,0 +1,193 @@
+---
+title: "FoodProject_Year"
+output: html_document
+author: Arunima Awale
+---
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+```
+
+Exploring differences in restaurant violations by year. 
+
+
+## Uploading the finalviol dataset
+```{r echo=FALSE}
+setwd("/Users/awale/Desktop/2018/Final Project")
+
+finalviol <- read.csv("finalviol.csv", header=T, na.strings=c(""," ","NA"))
+```
+
+Starting by exploring the contents of the datset. 
+
+```{r}
+summary(finalviol)
+```
+
+```{r}
+table(finalviol$year, finalviol$ViolStatus)
+```
+
+Since there are only two observations for 2006, I've filtered out these observations from the subsequent analyses. 
+
+Looking at the trend in violation status of food inspections from 2007 to 2018, we see that there is a large jump in the number of food inspections that were conducted from 2007 to 2008. The number of food inspections declines between 2009 and 2011 and then picks up and remains fairly constant starting in 2012. 
+
+```{r}
+finalviol %>% filter (year %in% c(2007,2008, 2009, 2010,2011, 2012, 2013, 2014, 2015, 2016, 2017,2018))%>% group_by(year) %>%
+  
+ggplot(aes(ViolStatus, fill=ViolStatus))+ geom_bar() +
+  
+  xlab ("Violation Status")+
+  
+  ggtitle("Violation Status of Food Inspections from 2007-2018")+ 
+  
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))+
+  
+  facet_grid(.~year)
+```
+
+Throughout the years, around 53% of the food inspections have resulted in a Failed inspection.
+
+```{r}
+finalviol %>% filter (year !=2006) %>%
+  
+  group_by(year) %>%
+
+  summarize(number_fail = sum(ViolStatus=="Fail"),number_pass =sum(ViolStatus=="Pass"), 
+            total =  n(), percent_fail=number_fail/total)
+ 
+```
+
+```{r}
+finalviol_year <- finalviol %>% filter (year !=2006) %>%
+  
+  group_by(year) %>%
+
+  summarize(number_fail = sum(ViolStatus=="Fail"),number_pass =sum(ViolStatus=="Pass"), 
+            total =  n(), percent_fail=number_fail/total)
+ 
+```
+ 
+```{r}
+finalviol_year %>% summarize(meanfail = mean(percent_fail))
+```
+
+```{r}
+finalviol_year %>% ggplot() +
+  
+  geom_line(aes (x=year, y=percent_fail), size = 1, color = "red")+ 
+  
+  ylim(0.45,0.55)+ 
+  
+  geom_point(aes (x=year, y=percent_fail), size = 2, color = "black")+
+  
+  xlab("Year")+
+  
+  ylab("% of Failed Inspection Test")+
+  
+  ggtitle("Percentage of Failed Inspection Test from 2007-2018")
+```
+
+
+Next,looking at the distribution of number of violations of those that Failed the Inspection Test, we see that across the years, the category with the largest count of violations is for number of violations <= 5. 
+
+```{r}
+finalviol %>% filter (ViolStatus=="Fail", year %in% c(2007,2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017,2018))%>% 
+  
+  ggplot(aes(n)) +
+  
+  geom_histogram (binwidth = 3, color = "black")+
+  
+  xlim(0, 20)+ 
+  
+  facet_wrap(.~year, ncol=6)+ xlab("Number of Violations")+
+  
+  ggtitle("Distribution of no. violations of establishments that Failed Inspection Test")
+```
+
+However, we see from the boxplot below that there is a wide spread in the number of violations, with some inspections detecting over 40 counts of violations!
+
+```{r}
+finalviol %>% filter (year >2007 & ViolStatus=="Fail" ) %>%
+  
+  ggplot(aes(x=year, y = n, group=year))+
+  
+  geom_boxplot()+ 
+  
+  ylab("Number of Violations")+
+  
+  ggtitle("Boxplot of No. of Violations of Establishments that Failed Inspection Test") 
+```
+
+Adding the total number of violations for each ViolStatus category, grouped by year:
+```{r}
+finalviol1 <- finalviol %>% filter (year !=2006 & ViolStatus=="Fail") %>%
+  
+  group_by(year) %>%
+  
+  summarize(total_no_violations_fail = sum(n))
+
+finalviol2 <-finalviol %>% filter (year !=2006 & ViolStatus=="Pass") %>%
+  
+  group_by(year) %>%
+  
+  summarize(total_no_violations_pass = sum(n))
+
+finalviol_number<- left_join(finalviol1,finalviol2)
+
+finalviol_number<- finalviol_number %>%
+  mutate(total_no_violations_diff = abs((total_no_violations_fail) - (total_no_violations_pass)))
+  
+ 
+```
+
+In this graph below, the red line represents the trend in the total number of violations for those that failed Inspection. Similarly, the blue line represents the trend for those that Passed the Inspection. Trend lines for the two groups are very similar, with the Failed Inspections reporting between 4,000-6,000 more number of violations. 
+
+```{r}
+finalviol_number %>%
+  
+  ggplot()+
+  
+  geom_line(aes (x=year, y = total_no_violations_fail), size =0.5, color = "red")+
+  
+  geom_point(aes (x=year, y= total_no_violations_fail), size = 2, color = "black")+
+  
+  geom_line(mapping=aes(x=year, y=total_no_violations_pass), size=0.5, color="blue")+
+  
+  geom_point(aes (x=year, y= total_no_violations_pass), size = 2, color = "black")+
+  
+  xlab("Year") + 
+  
+  ylab(" Total No. of Violations ") +
+  
+  ggtitle("Total Number of Violations from 2007-2018") 
+  
+```
+
+This graph below shows the difference in the number of violations based on violation status. 
+
+```{r}
+finalviol_number %>%
+  
+  ggplot()+
+  
+  geom_line(aes (x=year, y = total_no_violations_diff), size =0.5, color = "purple")+
+  
+  geom_point(aes (x=year, y= total_no_violations_diff), size = 2, color = "black")+
+  
+  xlab("Year") + 
+  
+  ylab(" Difference in No. of Violations ") +
+  
+  ggtitle("Diff in Num of Violations for Establishments that Passed and Failed Inspection") 
+  
+```
+
+
+
+
+
+
+
+
