@@ -1,0 +1,125 @@
+---
+title: "Geographic Trends"
+author: "plimasalle"
+date: "11/28/2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## 1. Upload Data
+
+_Used the version that is found in the repository. However, I opened it as a *xls* file and not a *cvs* file before I did anything to have a better look at the data._
+
+```{r}
+library(readxl)
+finalviol <- read_excel("BSTFinal/ME/finalviol.xls")
+```
+
+## 2. Clean Data
+
+_For simplicity's sake, I am looking at which zipcodes had the most inspections overall._ 
+
+```{r}
+library(tidyverse)
+geotrends <- finalviol %>% 
+  group_by(ZIP) %>% 
+  summarize(number_inspection = n())
+```
+
+## 3. Gathered Geocodes
+
+_Please download the `zipcode` package in R._ 
+
+```{r}
+library(zipcode)
+data(zipcode)
+zipcode <- zipcode %>% filter(state == "MA")
+```
+
+## 4. Finalized Dataset
+
+_I wanted the specific neighborhood names for easier interpretation of the trends, so I got each zipcode's location. However, many locations were just labeled as "Boston" so I manually searched nearby landmarks to get a better sense of the area. I deleted one row because the zipcode list did not have any matching points. (UPDATE: Because I was able to get the map to work, I don't think the actual neighborhoods are important / might weaken our analysis because it adds an element of bias.)_
+
+```{r}
+geotrends <- geotrends[-c(34),]
+
+geotrends["Name"] <- NA
+geotrends$Name <- c("Beacon Hill","Faneuil Hall","Downtown Crossing","Leather District","North End","MGH/Science Park","Longwood/Northeastern","Back Bay","Copley","South End","Dudley Square","Mission Hill","Franklin Field North","Clam Point","Ashmont","South Bay","Mattapan","Telegraph Hill","Logan/East Boston","Charlestown","Jamaica Plain","Roslindale","West Roxbury","Allston","Brighton","Hyde Park","Lower Allston", "Weymouth","Prudential","Old State House","Government Center","Seaport","Fenway/Kenmore","Chestnut Hill") 
+
+geotrends["Lat"] <- NA
+geotrends$Lat <- c(42.3579,42.36148,42.35653,42.34984,42.36503,42.36179,42.34308,42.34962,42.33895,42.33872,42.32451,42.33210,42.30745,42.29630,42.28713,42.31685,42.27210,42.33499,42.37830,42.37862,42.31000,42.28468,42.27943,42.35515,42.34842,42.25220,42.36795,42.21287,42.34713,42.33895,42.36149,42.34797,42.3470,42.322) 
+  
+geotrends["Long"] <- NA
+geotrends$Long <- c(-71.06408,-71.05417,-71.05365,-71.06101,-71.05636,-71.06774,-71.09268,-71.07372,-70.91963,-71.07276,-71.08455,-71.09651,-71.08127,-71.05454,-71.07156,-71.05811,-71.09426,-71.04562,-71.02550,-71.06495,-71.11171,-71.13052,-71.15980,-71.13164,-71.15349,-71.12593,-71.12056,-70.95872,-71.08234,-70.91963,-71.06036,-71.04463,-71.10215,-71.17314) 
+```
+
+## 5. Generate a Map of Boston
+
+_Please download the `ggmap` package in R. Note: The output will be a url. To access the map, copy and paste the url but *replace the xxx at the end of the url with the access code listed below*._
+
+```{r}
+library(ggmap)
+register_google(key = "AIzaSyBJ7I6jURgmb0noA4zA4w6SZHsmjTneEoE", account_type = "premium", day_limit = 100000)
+Bos_map <- ggmap(get_map(location = c(lon = -71.0589, lat = 42.3601), zoom=12, source = "google", col="bw"))
+```
+
+## 6. Create Shapefile of Boston
+
+_Please download the `rgdal` package in R._
+
+```{r}
+library(rgdal)
+
+boston_zips <- readOGR("~/Desktop/BSTFinal/ME/ZIP_Codes", "ZIP_Codes")
+
+shape_to_ggplot <- function(shape){
+  require(broom)
+  gg_data <- tidy(shape)
+  data <- slot(shape, "data")
+  shape[["polyID"]] <- sapply(slot(shape, "polygons"), function(x) slot(x, "ID"))
+  gg_data <- merge(gg_data, shape, by.x="id", by.y="polyID")
+  return(gg_data)
+}
+
+boston_zips_ggplot <- shape_to_ggplot(boston_zips)
+
+colnames(boston_zips_ggplot)[2] <- "lon"
+
+ggplot() + geom_polygon(data=boston_zips_ggplot, aes(x=lon, y=lat, group=group), fill="white", color="black")
+```
+
+## 7. Final Output 
+
+_(a) Join map and shapefile dataframes by zipcode (b) Overlay the two maps together (c) Create heat map visualization (d) Add labels (NOTE: I wasn't able to align the two maps perfectly, but I think the final output still works for this project)_
+
+```{r}
+geotrends$ZIP_2 <- paste0("0", as.character(geotrends$ZIP))
+
+boston_zips_ggplot_2 <- left_join(boston_zips_ggplot, geotrends, by=c("ZIP5"="ZIP_2"))
+polygon_map <- ggplot() + geom_polygon(data=boston_zips_ggplot_2, aes(x=lat, y=lon, group=group, fill=number_inspection), color="black", alpha=0.7) + geom_point(data=geotrends, aes(x=Lat, y=Long))
+
+FINAL <- Bos_map + geom_polygon(data=boston_zips_ggplot_2, aes(y=lat, x=lon, group=group, fill=number_inspection), color="black", alpha=0.7) + scale_fill_gradient2("Number of Times Inspected (2006 - 2018)", low = "blue", mid = "white", high = "red", midpoint = 0) + ggtitle("Total Food Inspections in Boston Eateries (by zip code)") + xlim(-71.15, -70.95) + ylim(42.28, 42.44)
+FINAL
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
