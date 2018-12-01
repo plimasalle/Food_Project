@@ -1,0 +1,743 @@
+---
+title: "Boston Eateries and Trends in Food Inspection Violations"
+output: html_document
+author: Arunima Awale, Paulina Limasalle, Avery Plough, Cynthia Siego
+---
+
+#Overview and Motivation: Provide an overview of the project goals and the motivation for it. Consider that this will be read by people who did not see your project proposal.
+  Boston is a metropolitan city and home to more than 11,000 food establishments [Leung, 2018](https://www.bostonglobe.com/business/2018/08/07/are-there-too-many-restaurants-boston-and-not-enough-diners/BLweUCYB1b4ivVvamX2JRL/story.html). Bostonians have plethora of dining choices that are available to them. This is an amazing perks for Bostonians who love to eat out and try out different food scenes; however, this also means that customers are faced with many different options. Choosing one will not be easy. 
+  Food and restaurant safety--measured by proxy of passing health inspections--is one of the most important factors that customers should think about when dining out. However, information on health inspection violations might not be readily accessible to customers. For example, [Boston CBS](https://boston.cbslocal.com/2018/10/15/boston-restaurants-health-code-records-i-team/) wrote that "almost every Boston restaurant gets an "A" grade, even those with flarant health code records", and that these grades do not show the full history of restaurants' violations. Restaurants that severely violated the inspection codes could regain their "A" grade after passing their next inspections; and some restaurants had shown patterns of repeatedly cleaning up their acts after failing inspections [(Boston CBS)](https://boston.cbslocal.com/2018/10/15/boston-restaurants-health-code-records-i-team/). 
+  Knowing the recent statistics that there are more than 1,600 health inspection violations at Boston restaurants in 2017 [Leung, 2018](https://www.bostonglobe.com/business/2018/08/07/are-there-too-many-restaurants-boston-and-not-enough-diners/BLweUCYB1b4ivVvamX2JRL/story.html), this piece of information is valuable for customers. To tackle this, we are interested in looking at [food establishment inspections data](https://data.boston.gov/dataset/food-establishment-inspections/resource/4582bec6-2b4f-4f9e-bc55-cbaa73117f4c?view_id=a3fc4f9e-a91f-40c0-bbab-569750af74e8 ) provided by the City of Boston to analyze the trends in health inspections violations amongs restaurants inspected in Greater Boston. Specifically, we are interested in looking at the patterns of violations across the years, food establishment types, and geographical area. 
+#Initial Questions: What questions are you trying to answer? How did these questions evolve over the course of the project? What new questions did you consider in the course of your analysis?
+
+
+===========================================================================================================
+#Data Cleaning
+Data downloaded at 11/8/2018 at 4:44pm. Data saved as csv file. There are 547700 observations with 26 variables. 
+
+```{r echo=FALSE}
+
+test <- read.csv("~/Desktop/BST260/Food_Project/RawData.csv", header=T, na.strings=c(""," ","NA"))
+```
+
+Current info: 
+- businessName (0 missing)
+- DBAName (suggest drop, reason: missing values)
+- LegalOwner (suggest drop, reason: missing values)
+- NameLast
+- NameFirst (suggest drop, reason: some are informative--e.g. variations on "inc")
+- LICENSENO
+- ISSDTTM
+- EXPDTTM
+- LICSTATUS ("Active", "Deleted", "Inactive") --> combine "Deleted" and "Inactive"?
+- LICENSECAT ("FS"  "FT"  "MFW" "RF")
+- DESCRIPT ("Eating & Drinking" "Eating & Drinking w/ Take Out" "Mobile Food Walk On"           "Retail Food")
+- RESULT
+       [1]  "DATAERR"    "Fail"       "Failed"     "HE_Closure" "HE_Fail"    "HE_FailExt"
+       [7] "HE_FAILNOR" "HE_Filed"   "HE_Hearing" "HE_Hold"    "HE_Misc"    "HE_NotReq" 
+       [13] "HE_OutBus"  "HE_Pass"    "HE_TSOP"    "Pass"       "PassViol"  
+       
+  RESULT          n
+   <fct>       <int>
+ 1 DATAERR        41
+ 2 Fail          238
+ 3 Failed          6
+ 4 HE_Closure    522
+ 5 HE_Fail    231949
+ 6 HE_FailExt  41291
+ 7 HE_FAILNOR    115
+ 8 HE_Filed    64700
+ 9 HE_Hearing  18721
+10 HE_Hold        17
+11 HE_Misc        94
+12 HE_NotReq    9836
+13 HE_OutBus    2025
+14 HE_Pass    170761
+15 HE_TSOP      6226
+16 Pass          964
+17 PassViol        2
+
+- RESULTDTTM
+- Violation (codes with 93 levels)
+- ViolLevel (*,**,***,1919)
+- ViolDesc (codes with 90 levels)
+- VIOLDTTM
+- ViolStatus (empty, Fail, Pass)
+- StatusDate
+- Comments
+- Address
+- City
+- State
+- ZIP
+- Property_Id
+- Location
+
+```{r include=FALSE}
+library(dplyr)
+library(lubridate)
+summary(test)
+
+levels(test$LICENSECAT)
+levels(test$LICSTATUS)
+levels(test$DESCRIPT)
+levels(test$RESULT)
+test %>% group_by(RESULT) %>% summarise(n=length(businessName))
+levels(test$ViolLevel)
+levels(test$ViolDesc)
+levels(test$ViolStatus)
+
+test$VIOLDTTM <- ymd_hms(test$VIOLDTTM) 
+test$ISSDTTM <- ymd_hms(test$ISSDTTM)
+test$EXPDTTM <- ymd_hms(test$EXPDTTM) 
+test$RESULTDTTM <- ymd_hms(test$RESULTDTTM) 
+test$StatusDate <- ymd_hms(test$StatusDate) 
+```
+
+
+After looking at the data, I would suggest trimming them.. 35,751 have different years between RESULTDTTM vs VIOLDTTM. I would suggest going with VIOLDTTM and ViolDesc, since we (or I) have no clue what RESULT means. 
+31,240 observation (5.7%) is missing the violation years. Options: 1) impute from the RESULTSDTTM, 2) complete case analysis.
+For this case, we stick with complete case, excluding any observations without date (thus years) of violation, description of violation (1 obs), and violation status (5744 observations). Total observations are 510,715. 
+
+```{r}
+keeps <- c("businessName","NameLast", "LICENSENO","LICSTATUS", "DESCRIPT","ViolDesc","VIOLDTTM", "ViolStatus", "Address","CITY", "ZIP", "ViolLevel")
+
+library(lubridate)
+violation<-test[keeps]
+violation <- violation %>% mutate(year = year(VIOLDTTM))
+
+ccvioly <- violation[!is.na(violation$year), ]
+ccvioly <- ccvioly[!is.na(ccvioly$ViolDesc),]
+ccvioly <- ccvioly[!is.na(ccvioly$ViolStatus),]
+ccvioly <- ccvioly[!is.na(ccvioly$ZIP),]
+ccvioly<-ccvioly[which(ccvioly$ViolDesc != ""),]
+ccvioly<-ccvioly[which(ccvioly$ZIP!= "0"),]
+summary(ccvioly)
+```
+ 
+
+We could try to categorize these violations to violation categories: (http://www.foodprotection.org/files/food-protection-trends/MarApr-14-Burke-Manes.pdf)
+1) Floors, Walls, and Ceilings
+"Fixture's not properly shielded" 
+"Floors Designed Constructed Installed"
+"Improper Maintenance of Floors"
+"Improper Maintenance of Walls/Ceilings"
+"Walls/Ceilings Designed Constructed Installed"   
+
+2) Food Equipment and Utensils
+"Clean Equipment & Utensils Storage" 
+"Dishwashng Facilities" 
+"Equipment Thermometers"
+"Food Contact Surfaces Clean" 
+"Food Contact Surfaces Design"
+"Food Thermometers Provided"
+"Food Utensil Storage" 
+"Improper Storage of Re-usable Utensils"
+"Inadequate Facilities/Cooling Methods" 
+ "Installed and Maintained" 
+ "Non-Food Contact Surfaces" 
+ "Non-Food Contact Surfaces Clean" 
+ "Pre-Flushed  Scrapped  Soaked"
+ "Re-use of Single Service Articles"
+ "Recieving/Sound Condition/Proper Temperatures"
+ "Single Service Articles Stored Dispensed"
+ "Test Kit Provided"
+ "Three Compartment Sink"
+ "Wash Rinse Water Clean Proper Temperature."
+ "Wiping Cloths  Clean  Sanitize" 
+
+3) Food Protection
+"Cold Holding" 
+"Hot Holding" 
+"Conformance w/ Approved Procedures"
+"Cooking Temperatures"
+"Cooling"     
+"Food products protected against contamination(Properly covered/secured for overnight storage)."
+"Food Protection" 
+"Food Restrictions & Preparation"
+"Handling of Food & Ice"
+"PHF's Properly Thawed"
+"Reduced Oxygen Packaging" 
+ "Reheating"
+ "Reservice of PHF or Unwrapped Foods"
+"Separation  Segregation Cross Contamination" 
+"Washing fruits and veg's." 
+
+
+4) Toilet and hand-washing facilities
+    "Adequate Handwashing/Where/When/How" 
+    "Hand Cleaner  Drying  Tissue Signage"
+    "Location  Accessible"    
+    "Low Sanitizer Alarm" 
+    "Number  Convenient" 
+    "Prevention of Contamination from Hands"
+    "Separation/Sanitizer Criteria"
+     "Toilet Enclosed Clean" 
+    
+5) Food
+"Approved Food  or Color Additives" 
+"Approved Source" 
+"Food Container Labels" 
+"Labeled  Common Name"
+"Labeling of Ingredients" 
+"Shellstock ID"
+"Spoilage Unsafe Food"
+"Tags & Records"
+
+6) Plumbing
+"Cross Connection Back Siphonage  Backflow"
+"Sewage and Waste Water"
+
+7) Lighting
+"Inadequate Lighting" 
+
+8) Insect, Rodent, Animal Control
+    "Adequate Number  Frequency Vermin Proof"
+    "Insects  Rodents  Animals" 
+    "Parasite Destruction"
+    "Pesticide Usage"  
+    
+9)  Garbage and Refuse Disposal
+"Improper Cleaning of Receptacles"
+ "Outside Storage Improperly Maintained"
+
+10) Personnel
+"Clean Cloths  Hair Restraint"
+"Good Hygienic Practices"
+"Non-Compliance w/Employee Health Policy"
+"Person in charge Assigned" 
+"Personnel w/ Infections Restricted/Excluded"
+"PIC Knowledge" 
+PIC Performing Duties" 
+"Safe Food Handeling Instructions"
+"Times as a Public Health Control"
+ "Tobacco"  
+
+11) Water
+"Hot and Cold Water"
+"Unsafe Water" 
+
+12) Dressing Rooms
+"Dressing Rooms Clean/Lockers Provided"
+
+
+13) Other
+"Anti-Choking"
+"Consumer Advisories"    
+"Living/Sleeping Quaters/Laundry"
+"Medicines  FirstAid Storage" 
+"Mop Sink not Provided" 
+"Premises Maintained"
+"Proper storage of clean linen"
+"Public Nuisance" 
+"Rooms and Equipment Vented"
+"Soiled Linen Storage" 
+"Toxic Items: Original Container"
+
+```{r}
+levels(ccvioly$ViolDesc)
+ccvioly %>% group_by(ViolDesc) %>% summarise(n=length(businessName))
+ccvioly %>% group_by(ViolStatus) %>% summarise(n=length(businessName))
+library(tidyverse)
+
+
+ccvioly$violcats <- fct_collapse(ccvioly$ViolDesc, 
+         "Floors, Walls, and Ceilings" = c("Fixture's not properly shielded","Floors Designed Constructed Installed","Improper Maintenance of Floors","Improper Maintenance of Walls/Ceilings","Walls/Ceilings Designed Constructed Installed"), 
+         "Food Equipment and Utensils" = c("Clean Equipment & Utensils Storage", 
+"Dishwashng Facilities", "Equipment Thermometers","Food Contact Surfaces Clean","Food Contact Surfaces Design", "Food Thermometers Provided", "Food Utensil Storage" ,"Improper Storage of Re-usable Utensils", "Inadequate Facilities/Cooling Methods" ,"Installed and Maintained", "Non-Food Contact Surfaces" , "Non-Food Contact Surfaces Clean" ,"Pre-Flushed  Scrapped  Soaked", "Re-use of Single Service Articles","Recieving/Sound Condition/Proper Temperatures", "Single Service Articles Stored Dispensed", "Test Kit Provided"
+,"Three Compartment Sink", "Wash Rinse Water Clean Proper Temperature.", "Wiping Cloths  Clean  Sanitize"),
+"Food Protection" = c("Cold Holding" ,"Hot Holding" ,"Conformance w/ Approved Procedures","Cooking Temperatures","Cooling","Food products protected against contamination(Properly covered/secured for overnight storage).","Food Protection" ,"Food Restrictions & Preparation","Handling of Food & Ice","PHF's Properly Thawed","Reduced Oxygen Packaging" ,"Reheating","Reservice of PHF or Unwrapped Foods","Separation  Segregation Cross Contamination","Washing fruits and veg's."), 
+"Toilet and hand-washing facilities" = c("Adequate Handwashing/Where/When/How","Hand Cleaner  Drying  Tissue Signage","Location  Accessible", "Low Sanitizer Alarm", "Number  Convenient" , "Prevention of Contamination from Hands", "Separation/Sanitizer Criteria", "Toilet Enclosed Clean"),
+"Food" = c("Approved Food  or Color Additives",
+"Approved Source" ,"Food Container Labels" ,"Labeled  Common Name","Labeling of Ingredients" ,"Shellstock ID","Spoilage Unsafe Food","Tags & Records"),
+"Plumbing"=c("Cross Connection Back Siphonage  Backflow",
+"Sewage and Waste Water"), 
+"Lighting"=c("Inadequate Lighting"), 
+"Insect, Rodent, Animal Control"=c("Adequate Number  Frequency Vermin Proof","Insects  Rodents  Animals","Parasite Destruction", "Pesticide Usage"), 
+"Garbage and Refuse Disposal" = c("Improper Cleaning of Receptacles","Outside Storage Improperly Maintained"), 
+"Personnel"= c("Clean Cloths  Hair Restraint","Good Hygienic Practices","Non-Compliance w/Employee Health Policy","Person in charge Assigned" ,"Personnel w/ Infections Restricted/Excluded","PIC Knowledge","PIC Performing Duties", "Safe Food Handeling Instructions","Times as a Public Health Control", "Tobacco"), 
+"Water" = c("Hot and Cold Water","Unsafe Water"), 
+"Dressing Rooms" =c("Dressing Rooms Clean/Lockers Provided"), 
+"Others"= c("Anti-Choking", "Consumer Advisories", "Living/Sleeping Quaters/Laundry","Medicines  FirstAid Storage","Mop Sink not Provided","Premises Maintained","Proper storage of clean linen","Public Nuisance" ,"Rooms and Equipment Vented","Soiled Linen Storage","Toxic Items: Original Container")
+
+)
+      
+levels(ccvioly$violcats)
+
+sumx <-ccvioly %>%  group_by(LICENSENO,year,violcats, ViolStatus) %>% summarise(n=n(), name=paste(unique(businessName)), LICSTATUS=paste(unique(LICSTATUS)), DESCRIPT=paste(unique(DESCRIPT)), ZIP=paste(unique(ZIP))) 
+
+
+sumviol <- ccvioly %>% filter(., ViolStatus == "Fail") %>% group_by(LICENSENO,year,violcats) %>% 
+  summarise(n=n(), name=paste(unique(businessName)), LICSTATUS=paste(unique(LICSTATUS)), DESCRIPT=paste(unique(DESCRIPT)),
+            YEAR=paste(unique(year)), violcat=paste(unique(violcats)), ZIP=paste(unique(ZIP))) 
+
+sumpass <- ccvioly %>% filter(., ViolStatus == "Pass") %>% group_by(LICENSENO,year,violcats) %>% 
+  summarise(n=n(), name=paste(unique(businessName)), LICSTATUS=paste(unique(LICSTATUS)), DESCRIPT=paste(unique(DESCRIPT)),
+            YEAR=paste(unique(year)), violcat=paste(unique(violcats)), ZIP=paste(unique(ZIP))) 
+```
+
+sumx is dataset that groups the data by license number, year of violation, violation categories, and violation status; collapse them based on these, and count the # of rows based on these. Thus it represents for a particular food establishment at year X, what would be the # of failing/passing violations for a particular violation types. 
+
+```{r}
+
+finalviol <- sumx[,c(1,6,8,9,2,7,3,4,5)]
+head(finalviol)
+write.csv(finalviol, 'finalviol.csv')
+```
+
+We then uploaded this finalviol.csv to [github](https://raw.githubusercontent.com/plimasalle/Food_Project/master/finalviol.csv)
+
+
+===========================================================================================================
+#Restaurant Violations Analysis based on Years of Inspections
+The goal of this analysis is to look at the trends of restaurant violations based on the years of inspections performed. 
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+```
+
+
+## Uploading the finalviol dataset
+```{r echo=FALSE}
+finalviol <- read.csv("https://raw.githubusercontent.com/plimasalle/Food_Project/master/finalviol.csv", header=T, na.strings=c(""," ","NA"))
+```
+
+Starting by exploring the contents of the datset. 
+
+```{r}
+summary(finalviol)
+```
+
+```{r}
+table(finalviol$year, finalviol$ViolStatus)
+```
+
+Since there are only two observations for 2006, I've filtered out these observations from the subsequent analyses. 
+
+Looking at the trend in violation status of food inspections from 2007 to 2018, we see that there is a large jump in the number of food inspections that were conducted from 2007 to 2008. The number of food inspections declines between 2009 and 2011 and then picks up and remains fairly constant starting in 2012. 
+
+```{r}
+finalviol %>% filter (year %in% c(2007,2008, 2009, 2010,2011, 2012, 2013, 2014, 2015, 2016, 2017,2018))%>% group_by(year) %>%
+ggplot(aes(ViolStatus, fill=ViolStatus))+ geom_bar() +
+  xlab ("Violation Status")+
+  ggtitle("Violation Status of Food Inspections from 2007-2018")+ 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))+
+  facet_grid(.~year)
+```
+
+Throughout the years, around 53% of the food inspections have resulted in a Failed inspection.
+
+```{r}
+finalviol %>% filter (year !=2006) %>%
+  group_by(year) %>%
+  summarize(number_fail = sum(ViolStatus=="Fail"),number_pass =sum(ViolStatus=="Pass"), 
+            total =  n(), percent_fail=number_fail/total)
+ 
+```
+
+```{r}
+finalviol_year <- finalviol %>% filter (year !=2006) %>%
+  group_by(year) %>%
+  summarize(number_fail = sum(ViolStatus=="Fail"),number_pass =sum(ViolStatus=="Pass"), 
+            total =  n(), percent_fail=(number_fail/total*100))
+ 
+```
+ 
+```{r}
+finalviol_year %>% summarize(meanfail = mean(percent_fail))
+```
+
+```{r}
+finalviol_year %>% ggplot() +
+  
+  geom_line(aes (x=year, y=percent_fail), size = 1, color = "red")+ 
+  
+  ylim(45,55)+ 
+  
+  geom_point(aes (x=year, y=percent_fail), size = 2, color = "black")+
+  
+  xlab("Year")+
+  
+  ylab("% of Failed Inspection Test")+
+  
+  ggtitle("Percentage of Failed Inspection Test from 2007-2018")
+```
+
+
+Next,looking at the distribution of number of violations of those that Failed the Inspection Test, we see that across the years, the category with the largest count of violations is for number of violations <= 5. 
+
+```{r}
+finalviol %>% filter (ViolStatus=="Fail", year %in% c(2007,2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017,2018))%>% 
+  
+  ggplot(aes(n)) +
+  
+  geom_histogram (binwidth = 3, color = "black")+
+  
+  xlim(0, 20)+ 
+  
+  facet_wrap(.~year, ncol=6)+ xlab("Number of Violations")+
+  
+  ggtitle("Distribution of no. violations of establishments that Failed Inspection Test")
+```
+
+However, we see from the boxplot below that there is a wide spread in the number of violations, with some inspections detecting over 40 counts of violations!
+
+```{r}
+finalviol %>% filter (year >2007 & ViolStatus=="Fail" ) %>%
+  
+  ggplot(aes(x=year, y = n, group=year))+
+  
+  geom_boxplot()+ 
+  
+  ylab("Number of Violations")+
+  
+  ggtitle("Boxplot of No. of Violations of Establishments that Failed Inspection Test") 
+```
+
+Adding the total number of violations for each ViolStatus category, grouped by year:
+```{r}
+finalviol1 <- finalviol %>% filter (year !=2006 & ViolStatus=="Fail") %>%
+  
+  group_by(year) %>%
+  
+  summarize(total_no_violations_fail = sum(n))
+
+finalviol2 <-finalviol %>% filter (year !=2006 & ViolStatus=="Pass") %>%
+  
+  group_by(year) %>%
+  
+  summarize(total_no_violations_pass = sum(n))
+
+finalviol_number<- left_join(finalviol1,finalviol2)
+
+finalviol_number<- finalviol_number %>%
+  mutate(total_no_violations_diff = abs((total_no_violations_fail) - (total_no_violations_pass)))
+  
+ 
+```
+
+In this graph below, the red line represents the trend in the total number of violations for those that failed Inspection. Similarly, the blue line represents the trend for those that Passed the Inspection. Trend lines for the two groups are very similar, with the Failed Inspections reporting between 4,000-6,000 more number of violations. 
+
+```{r}
+finalviol_number %>%
+  
+  ggplot()+
+  
+  geom_line(aes (x=year, y = total_no_violations_fail), size =0.5, color = "red")+
+  
+  geom_point(aes (x=year, y= total_no_violations_fail), size = 2, color = "black")+
+  
+  geom_line(mapping=aes(x=year, y=total_no_violations_pass), size=0.5, color="blue")+
+  
+  geom_point(aes (x=year, y= total_no_violations_pass), size = 2, color = "black")+
+  
+  xlab("Year") + 
+  
+  ylab(" Total No. of Violations ") +
+  
+  ggtitle("Total Number of Violations from 2007-2018") + 
+  
+  geom_text(aes(x= 2013, y = 15000, label="Pass"), color="blue")+
+  
+  geom_text(aes(x= 2010, y = 25000, label="Fail"), color="red")
+  
+```
+
+This graph below shows the difference in the number of violations based on violation status. 
+
+```{r}
+finalviol_number %>%
+  ggplot()+
+  geom_line(aes (x=year, y = total_no_violations_diff), size =0.5, color = "purple")+
+  geom_point(aes (x=year, y= total_no_violations_diff), size = 2, color = "black")+
+  xlab("Year") + 
+  ylab(" Difference in No. of Violations ") +
+  ggtitle("Difference in Number of Passed vs Failed Inspection Annually") 
+  
+```
+
+
+
+
+
+=============================================================================================================
+#Analysis based on restaurant type
+
+The goal of this analysis is to explore differences in restaurants inspections violations based on the restaurant and restaurant type.
+
+```{r, message=FALSE}
+library(tidyverse)
+library(gridExtra)
+finalviol <- read.csv("https://raw.githubusercontent.com/plimasalle/Food_Project/master/finalviol.csv")
+```
+
+```{r}
+finalviol <- finalviol %>%
+  filter(year > 2006, LICSTATUS == "Active") %>%
+  mutate(violstatus_fail = ifelse(ViolStatus == "Fail", 1, 0))
+
+finalviol_anyfail <- finalviol %>%
+  group_by(DESCRIPT, name, ZIP, LICENSENO, year) %>%
+  summarize(fails = sum(violstatus_fail), num_cat = n()) %>%
+  mutate(anyfails = ifelse(fails > 0, 1, 0), fivefails = ifelse(fails > 4, 1, 0), pcnt_fails = fails/num_cat)
+
+finalviol_anyfail %>% group_by(DESCRIPT) %>%
+  summarize(mean(anyfails), n())
+```
+
+There are four main categories of restaurants in the dataset:
+  1. Eating & Drinking
+  2. Eating & Drinking w/ Take Out
+  3. Mobile Food Walk On
+  4. Retail Food
+  
+Across all years, the vast majority of restaurants had at least one failure across the violation categories inspected (ranging from 98.1% among Retail Food to 99.7% among Mobile Food Walk On restaurants).
+
+*Note: These analyses are limited to restaurants with active licenses only, but these numbers did not change substantially (fractions of percentage points) when restaurants with inactive licenses were also included.*
+
+```{r}
+finalviol_anyfail %>% group_by(DESCRIPT) %>%
+  summarize(mean(fivefails), n())
+```
+
+Across all years, there was more variation across restaurant categories in the percent of restaurants per category that had at least five failures across violation categories. About a third of Eating and Drinking and Eating & Drinking w/ Take Out restaurants, about a fifth of Retail Food restaurants, and about a sixth of Mobile Food Walk On restuarants had at least five failures.
+
+```{r}
+finalviol_anyfail %>% filter(anyfails > 0) %>%
+  group_by(DESCRIPT) %>%
+  summarize(mean(pcnt_fails), n())
+```
+
+Among restaurants that failed at least one inspection category, Retail Food restaurants overall failed the highest percent of violation categories inspected with the average Retail Food restaurant failing 67.9% of the violation categories inspected. Eating & Drinking restaurants failed the lowest percent of categories inspected with the average Eating & Drinking restaurant failing 58.9% of violation categories inspected.
+
+```{r}
+finalviol_typeyear <- finalviol_anyfail %>%
+  filter(anyfails > 0) %>%
+  group_by(DESCRIPT, year) %>%
+  summarize(avg_pcnt_fails = mean(pcnt_fails), count = n())
+
+ggplot(finalviol_typeyear, aes(year, avg_pcnt_fails, color = DESCRIPT)) +
+  geom_line() +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Violation Categories Failed", limits = c(0, 0.8))
+```
+
+With the exception of Mobile Food Walk On, all restuarants that failed at least one violation category inspected tended to fail a similar percent of violation categories inspected across years. This variation for Mobile Food Walk On may be driven by the low number of Mobile Food Walk On restaurants (ranging from 1 in 2009 to a peak of 102 in 2018).
+
+```{r}
+finalviol_cat <- finalviol %>%
+  group_by(DESCRIPT, year, violcats) %>%
+  summarize(avg_cat = mean(violstatus_fail), count = n())
+
+ggplot(filter(finalviol_cat, DESCRIPT == "Eating & Drinking"), aes(year, avg_cat, color = violcats)) +
+  geom_line() +
+  ggtitle("Frequency of Violation Categories for Eating & Drinking Restuarants") +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed by Violation Category", limits = c(0, 0.6))
+```
+
+```{r}
+ggplot(filter(finalviol_cat, DESCRIPT == "Eating & Drinking w/ Take Out"), aes(year, avg_cat, color = violcats)) +
+  geom_line() +
+  ggtitle("Frequency of Violation Categories for Eating & Drinking w/ Take Out Restuarants") +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed by Violation Category", limits = c(0, 0.6))
+```
+
+```{r}
+ggplot(filter(finalviol_cat, DESCRIPT == "Mobile Food Walk On"), aes(year, avg_cat, color = violcats)) +
+  geom_line() +
+  ggtitle("Frequency of Violation Categories for Mobile Food Walk On Restuarants") +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed by Violation Category", limits = c(0, 1.0))
+```
+
+```{r}
+ggplot(filter(finalviol_cat, DESCRIPT == "Retail Food"), aes(year, avg_cat, color = violcats)) +
+  geom_line() +
+  ggtitle("Frequency of Violation Categories for Retail Food Restuarants") +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed by Violation Category", limits = c(0, 0.7))
+```
+
+Across all restaurant types, the frequency of failing by violation category is approximately the same across violation categories across all years (generally within about a five percentage point band).
+
+```{r}
+finalviol_violcats <- finalviol %>%
+  group_by(violcats, name, ZIP, LICENSENO, year) %>%
+  summarize(fails = sum(violstatus_fail), num_cat = n()) %>%
+  mutate(anyfails = ifelse(fails > 0, 1, 0), pcnt_fails = fails/num_cat)
+
+finalviol_violcats %>% group_by(violcats) %>%
+  summarize(mean(anyfails), n())
+```
+
+Across all violation categories, there are high rates of reatuarants failing at least one inspection
+
+```{r}
+finalviol_catyear <- finalviol_violcats %>%
+  filter(anyfails > 0) %>%
+  group_by(violcats, year) %>%
+  summarize(avg_pcnt_fails = mean(pcnt_fails), count = n())
+
+ggplot(finalviol_catyear, aes(year, avg_pcnt_fails, color = violcats)) +
+  geom_line() +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed", limits = c(0, 0.7))
+```
+
+Among restaurants that failed in at least one category, there were approximately
+
+```{r}
+finalviol_repeat <- finalviol %>%
+  group_by(name, DESCRIPT, ZIP, violcats) %>%
+  summarize(mult_fails = sum(violstatus_fail)) %>%
+  mutate(violrepeat = ifelse(mult_fails > 1, 1, 0))
+```
+
+Based on the data, the ten most common repeat offenders within the same violation category are:
+  1. Subway (02115)
+  2. Cosi (02110)
+  3. Dunkin Donuts (02125)
+  4. Dunkin Donuts (02128)
+  5. Dunkin Donuts (02122)
+  6. McDonalds (02135)
+  7. U Food Grill (02128)
+  8. Burger King (02128)
+  9. Dunkin Donuts RMG (02128)
+  10. Currito Burrito (02128)
+  
+
+
+Below attached an exploratory analysis on potentially different types of violations amongst Dunkin Donuts franchises. There does not seem to be a clear pattern here. 
+```{r, echo=FALSE}
+finalviol_DD <- finalviol %>%
+  filter(name == "Dunkin Donuts" | name == "Dunkin" | name == "DUNKIN (STATION DONUTS)" | name == "DUNKIN DONUT" | name == "Dunkin Donuts (1447 Tremont St.)" | name == "Dunkin Donuts (209 North Harvard St.)" | name == "Dunkin Donuts (219 Cambridge)" | name == "Dunkin Donuts (48 W Broadway)" | name == "Dunkin Donuts (895 Morton St.)" | name == "DUNKIN DONUTS (ALLSTON)" | name == "DUNKIN DONUTS (BAY ROAD)" | name == "Dunkin Donuts (Canal St.)" | name == "DUNKIN DONUTS (CARNEY)" | name == "Dunkin Donuts (Causeway St.)" | name == "DUNKIN DONUTS (CITY PLACE)" | name == "Dunkin Donuts (Front Foodcourt)" | name == "Dunkin Donuts (TRMNL-C Baggage Area)" | name == "Dunkin Donuts (V.F.W. Pkwy.)" | name == "DUNKIN DONUTS (WEST ROXBURY)" | name == "DUNKIN DONUTS (WTC)" | name == "DUNKIN DONUTS @ HAYDEN HALL" | name == "Dunkin Donuts @ MBTA Station" | name == "Dunkin Donuts @ Stop & Shop" | name == "Dunkin Donuts at Old Colony" | name == "DUNKIN DONUTS BLUE HILL AVE" | name == "Dunkin Donuts Kiosk" | name == "Dunkin Donuts North Station" | name == "Dunkin Donuts Space No. 86" | name == "Dunkin Donuts-Amer Airlines/Landside" | name == "DUNKIN DONUTS-U S AIR" | name == "DUNKIN DONUTS'" | name == "Dunkin Donuts(757 Centre St.)" | name == "DUNKIN DONUTS(ARRIVAL)" | name == "DUNKIN DONUTS(DEPARTURE)" | name == "DUNKIN DONUTS(FRANKLIN)" | name == "DUNKIN DONUTS(SATELLITE)" | name == "DUNKIN DONUTS(WOLCOTT SQ. LLC)" | name == "Dunkin Donuts/1138 Washington St." | name == "Dunkin Donuts/Airside" | name == "DUNKIN DONUTS/BASKIN ROBBINS" | name == "DUNKIN DONUTS/BEE FINE FOODS" | name == "DUNKIN DONUTS/FIRST DONUTS INC" | name == "DUNKIN DONUTS/GALLERIA" | name == "DUNKIN DONUTS/GALLIVAN" | name == "DUNKIN DONUTS/HYDE PK AVE" | name == "DUNKIN DONUTS/PLAZA ENT" | name == "DUNKIN DONUTS/SCNVANOS" | name == "DUNKIN DONUTS/WALDWIN GROUP" | name == "DUNKIN'" | name == "Dunkin' Donuts" | name == "DUNKIN' DONUTS" | name == "Dunkin' Donuts Express" | name == "DUNKIN' DONUTS No. 0311" | name == "DUNKIN' DONUTS-WATERMARK" | name == "Dunkin' Donuts(C.A. Donuts)" | name == "DUNKIN' DONUTS(RMG DONUTS LLC)" | name == "DUNKIN/DONUT/WATERMARK") %>%
+  group_by(LICENSENO, name, ZIP, year) %>%
+  summarize(fails = sum(violstatus_fail), count = n()) %>%
+  mutate(pcnt_fails = fails / count)
+
+ggplot(finalviol_DD, aes(year, pcnt_fails, color = as.factor(LICENSENO))) +
+  geom_line() +
+  ggtitle("Dunkin Donuts Violations by Franchise per Year") +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(name = "Percent of Inspections Failed") +
+  theme(legend.position = "none")
+```
+
+```{r, echo=FALSE}
+ggplot(finalviol_DD, aes(year, pcnt_fails, group = year)) +
+  geom_boxplot() +
+  ggtitle("Dunkin Donuts Violations by Franchise per Year") +
+  scale_x_continuous(name = "Year", limits = c(2006, 2019), breaks = c(2007:2018)) +
+  scale_y_continuous(name = "Percent of Inspections Failed") +
+  theme(legend.position = "none")
+```
+
+
+
+
+
+============================================================================================================
+#Analysis based on geographic area
+Our goal in this case is to analyze the trend of health inspection violations based on the geographical area. From the heatmap below, we could see that most of the inspections happen in north part of Boston, around the airport area. 
+
+## 1. Upload Data
+
+```{r}
+finalviol <- read.csv("https://raw.githubusercontent.com/plimasalle/Food_Project/master/finalviol.csv", header=T, na.strings=c(""," ","NA"))
+```
+
+## 2. Clean Data
+
+_For simplicity's sake, I am looking at which zipcodes had the most inspections overall._ 
+
+```{r, echo=FALSE}
+library(tidyverse)
+geotrends <- finalviol %>% 
+  group_by(ZIP) %>% 
+  summarize(number_inspection = n())
+```
+
+## 3. Gathered Geocodes
+
+_Please download the `zipcode` package in R._ 
+
+```{r}
+library(zipcode)
+data(zipcode)
+zipcode <- zipcode %>% filter(state == "MA")
+```
+
+
+## 4. Generate a Map of Boston
+
+_Please download the `ggmap` package in R. Note: The output will be a url. To access the map, copy and paste the url but *replace the xxx at the end of the url with the access code listed below*._
+
+```{r}
+if(!requireNamespace("devtools")) install.packages("devtools")
+devtools::install_github("dkahle/ggmap", ref = "tidyup")
+library(ggmap)
+register_google(key = "AIzaSyBJ7I6jURgmb0noA4zA4w6SZHsmjTneEoE", account_type = "premium", day_limit = 100000)
+Bos_map <- ggmap(get_map(location = c(lon = -71.0589, lat = 42.3601), zoom=12, source = "google", col="bw"))
+```
+
+## 5. Create Shapefile of Boston
+
+_Please download the `rgdal` package in R._
+install.packages("rgdal", source= "https://trac.osgeo.org/gdal/wiki/DownloadSource")
+```{r}
+
+library(rgdal)
+
+boston_zips <- readOGR("~/Desktop/ZIP_Codes", "ZIP_Codes")
+
+
+shape_to_ggplot <- function(shape){
+  require(broom)
+  gg_data <- tidy(shape)
+  data <- slot(shape, "data")
+  shape[["polyID"]] <- sapply(slot(shape, "polygons"), function(x) slot(x, "ID"))
+  gg_data <- merge(gg_data, shape, by.x="id", by.y="polyID")
+  return(gg_data)
+}
+
+boston_zips_ggplot <- shape_to_ggplot(boston_zips)
+
+colnames(boston_zips_ggplot)[2] <- "lon"
+
+ggplot() + geom_polygon(data=boston_zips_ggplot, aes(x=lon, y=lat, group=group), fill="white", color="black")
+```
+
+## 6. Final Output 
+
+_(a) Join map and shapefile dataframes by zipcode (b) Overlay the two maps together (c) Create heat map visualization (d) Add labels (NOTE: I wasn't able to align the two maps perfectly, but I think the final output still works for this project)_
+
+```{r}
+geotrends$ZIP_2 <- paste0("0", as.character(geotrends$ZIP))
+
+boston_zips_ggplot_2 <- left_join(boston_zips_ggplot, geotrends, by=c("ZIP5"="ZIP_2"))
+polygon_map <- ggplot() + geom_polygon(data=boston_zips_ggplot_2, aes(x=lat, y=lon, group=group, fill=number_inspection), color="black", alpha=0.7) + geom_point(data=geotrends, aes(x=Lat, y=Long))
+
+FINAL <- Bos_map + geom_polygon(data=boston_zips_ggplot_2, aes(y=lat, x=lon, group=group, fill=number_inspection), color="black", alpha=0.7) + scale_fill_gradient2("Number of Times Inspected (2006 - 2018)", low = "blue", mid = "white", high = "red", midpoint = 0) + ggtitle("Total Food Inspections in Boston Eateries (by zip code)") + xlim(-71.15, -70.95) + ylim(42.28, 42.44)
+FINAL
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
